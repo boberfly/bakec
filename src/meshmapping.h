@@ -1,6 +1,5 @@
 #pragma once
 
-#include <glad/glad.h>
 #include "compute.h"
 #include "fornos.h"
 #include "math.h"
@@ -47,13 +46,13 @@ public:
 
 	inline float progress() const { return (float)_workOffset / (float)_workCount; }
 
-	inline const ComputeBuffer<Vector4>* coords() const { return _coords.get(); }
-	inline const ComputeBuffer<uint32_t>* coords_tidx() const { return _tidx.get(); }
-	inline const ComputeBuffer<Pix_GPUData>* pixels() const { return _pixels.get(); }
-	inline const ComputeBuffer<PixT_GPUData>* pixelst() const { return _pixelst.get(); }
-	inline const ComputeBuffer<Vector4>* meshPositions() const { return _meshPositions.get(); }
-	inline const ComputeBuffer<Vector4>* meshNormals() const { return _meshNormals.get(); }
-	inline const ComputeBuffer<BVHGPUData>* meshBVH() const { return _bvh.get(); }
+	inline const VBHandle coords() const { return _coords; }
+	inline const VBHandle coords_tidx() const { return _tidx; }
+	inline const VBHandle pixels() const { return _pixels; }
+	inline const VBHandle pixelst() const { return _pixelst; }
+	inline const VBHandle meshPositions() const { return _meshPositions; }
+	inline const VBHandle meshNormals() const { return _meshNormals; }
+	inline const VBHandle meshBVH() const { return _bvh; }
 
 
 private:
@@ -61,15 +60,16 @@ private:
 	size_t _workCount;
 	bool _cullBackfaces = false;
 
-	std::unique_ptr<ComputeBuffer<Vector4> > _coords;
-	std::unique_ptr<ComputeBuffer<uint32_t> > _tidx;
-	std::unique_ptr<ComputeBuffer<Pix_GPUData> > _pixels;
-	std::unique_ptr<ComputeBuffer<PixT_GPUData> > _pixelst;
-	std::unique_ptr<ComputeBuffer<Vector4> > _meshPositions;
-	std::unique_ptr<ComputeBuffer<Vector4> > _meshNormals;
-	std::unique_ptr<ComputeBuffer<BVHGPUData> > _bvh;
-	GLuint _program;
-	GLuint _programCullBackfaces;
+	VBHandle _coords;
+	VBHandle _tidx;
+	VBHandle _pixels;
+	VBHandle _pixelst;
+	VBHandle _meshPositions;
+	VBHandle _meshNormals;
+	VBHandle _bvh;
+	ProgramHandle _program;
+	ProgramHandle _programCullBackfaces;
+	UniformHandle _uniforms;
 
 	Timing _timing;
 };

@@ -32,6 +32,14 @@ static const size_t k_workPerFrame = 1024 * 128;
 
 namespace
 {
+	struct UniformsData
+	{
+		uint32_t workOffset;
+		uint32_t coordsSize;
+		uint32_t bvhSize;
+		float _pad;
+	};
+
 	std::vector<Pix_GPUData> computePixels(const CompressedMapUV *map)
 	{
 		const size_t count = map->positions.size();
@@ -136,15 +144,17 @@ void MeshMapping::init
 	// Pixels data
 	{
 		auto pixels = computePixels(map.get());
-		_pixels = std::unique_ptr<ComputeBuffer<Pix_GPUData> >(
-			new ComputeBuffer<Pix_GPUData>(&pixels[0], pixels.size(), GL_STATIC_DRAW));
+		_pixels = VBHandle(
+			bgfx::createVertexBuffer(bgfx::copy(&pixels[0], sizeof(Pix_GPUData) * pixels.size()), computeDecl(sizeof(Pix_GPUData)), BGFX_BUFFER_COMPUTE_READ)
+			, pixels.size());
 
 		// Compute tangent data
 		if (map->tangents.size() > 0)
 		{
 			auto pixelst = computePixelsT(map.get());
-			_pixelst = std::unique_ptr<ComputeBuffer<PixT_GPUData> >(
-				new ComputeBuffer<PixT_GPUData>(&pixelst[0], pixelst.size(), GL_STATIC_DRAW));
+			_pixelst = VBHandle(
+				bgfx::createVertexBuffer(bgfx::copy(&pixelst[0], sizeof(PixT_GPUData) * pixelst.size()), computeDecl(sizeof(PixT_GPUData)), BGFX_BUFFER_COMPUTE_READ)
+				, pixelst.size());
 		}
 	}
 
@@ -154,28 +164,39 @@ void MeshMapping::init
 		std::vector<Vector4> positions;
 		std::vector<Vector4> normals;
 		fillMeshData(mesh.get(), *rootBVH, bvhs, positions, normals);
-		_meshPositions = std::unique_ptr<ComputeBuffer<Vector4> >(
-			new ComputeBuffer<Vector4>(&positions[0], positions.size(), GL_STATIC_DRAW));
-		_meshNormals = std::unique_ptr<ComputeBuffer<Vector4> >(
-			new ComputeBuffer<Vector4>(&normals[0], normals.size(), GL_STATIC_DRAW));
-		_bvh = std::unique_ptr<ComputeBuffer<BVHGPUData> >(
-			new ComputeBuffer<BVHGPUData>(&bvhs[0], bvhs.size(), GL_STATIC_DRAW));
+		_meshPositions = VBHandle(
+			bgfx::createVertexBuffer(bgfx::copy(&positions[0], sizeof(Vector4) * positions.size()), computeDecl(sizeof(Vector4)), BGFX_BUFFER_COMPUTE_READ)
+			, positions.size());
+		_meshNormals = VBHandle(
+			bgfx::createVertexBuffer(bgfx::copy(&normals[0], sizeof(Vector4) * normals.size()), computeDecl(sizeof(Vector4)), BGFX_BUFFER_COMPUTE_READ)
+			, normals.size());
+		_bvh = VBHandle(
+			bgfx::createVertexBuffer(bgfx::copy(&bvhs[0], sizeof(BVHGPUData) * bvhs.size()), computeDecl(sizeof(BVHGPUData)), BGFX_BUFFER_COMPUTE_READ)
+			, bvhs.size());
 	}
 
 	_workCount = ((map->positions.size() + k_groupSize - 1) / k_groupSize) * k_groupSize;
 
 	// Results data
 	{
-		_coords = std::unique_ptr<ComputeBuffer<Vector4> >(
-			new ComputeBuffer<Vector4>(_workCount, GL_STATIC_DRAW));
-		_tidx = std::unique_ptr<ComputeBuffer<uint32_t> >(
-			new ComputeBuffer<uint32_t>(_workCount, GL_STATIC_DRAW));
+		_coords = VBHandle(
+			bgfx::createVertexBuffer(bgfx::alloc(_workCount), computeDecl(sizeof(Vector4)), BGFX_BUFFER_COMPUTE_WRITE)
+			, _workCount);
+		_tidx = VBHandle(
+			bgfx::createVertexBuffer(bgfx::alloc(_workCount), computeDecl(sizeof(uint32_t)), BGFX_BUFFER_COMPUTE_WRITE)
+			, _workCount);
 	}
 
 	// Shader
 	{
-		_program = LoadComputeShader_MeshMapping();
-		_programCullBackfaces = LoadComputeShader_MeshMappingCullBackfaces();
+		_program = ProgramHandle(LoadComputeShader_MeshMapping());
+		_programCullBackfaces = ProgramHandle(LoadComputeShader_MeshMappingCullBackfaces());
+	}
+
+	// Uniforms
+	{
+		_uniforms = UniformHandle(
+			bgfx::createUniform("u_params", bgfx::UniformType::Vec4, 1));
 	}
 
 	_cullBackfaces = cullBackfaces;
@@ -192,19 +213,23 @@ bool MeshMapping::runStep()
 
 	if (_workOffset == 0) _timing.begin();
 
-	if (_cullBackfaces) glUseProgram(_programCullBackfaces);
-	else glUseProgram(_program);
+	bgfx::ProgramHandle program;
+	if (_cullBackfaces) program = _programCullBackfaces.handle;
+	else program = _program.handle;
 
-	glUniform1ui(1, (GLuint)_workOffset);
-	glUniform1ui(2, (GLuint)_coords->size());
-	glUniform1ui(3, (GLuint)_bvh->size());
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 4, _pixels->bo());
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 5, _meshPositions->bo());
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 6, _bvh->bo());
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 7, _coords->bo());
-	glBindBufferBase(GL_SHADER_STORAGE_BUFFER, 8, _tidx->bo());
+	UniformsData uniformsData;
+	uniformsData.workOffset = _workOffset;
+	uniformsData.coordsSize = _coords.size;
+	uniformsData.bvhSize = _bvh.size;
 
-	glDispatchCompute((GLuint)(work / k_groupSize), 1, 1);
+	bgfx::setUniform(_uniforms.handle, &uniformsData, 1);
+	bgfx::setBuffer(4, _pixels.handle, bgfx::Access::Read);
+	bgfx::setBuffer(5, _meshPositions.handle, bgfx::Access::Read);
+	bgfx::setBuffer(6, _bvh.handle, bgfx::Access::Read);
+	bgfx::setBuffer(7, _coords.handle, bgfx::Access::Write);
+	bgfx::setBuffer(8, _tidx.handle, bgfx::Access::Write);
+
+	bgfx::dispatch(0, program, work / k_groupSize, 1, 1);
 
 	_workOffset += work;
 
@@ -234,7 +259,8 @@ bool MeshMappingTask::runStep()
 
 void MeshMappingTask::finish()
 {
-	glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+	//glMemoryBarrier(GL_SHADER_STORAGE_BARRIER_BIT);
+	uint32_t frame = bgfx::frame();
 }
 
 float MeshMappingTask::progress() const

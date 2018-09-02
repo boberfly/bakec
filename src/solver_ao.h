@@ -26,7 +26,6 @@ SOFTWARE.
 #include "fornos.h"
 #include "math.h"
 #include "timing.h"
-#include <glad/glad.h>
 #include <memory>
 #include <vector>
 
@@ -80,14 +79,21 @@ private:
 		Vector3 ty; float _pad3;
 	};
 
-	GLuint _rayProgram;
-	GLuint _aoProgram;
-	GLuint _avgProgram;
-	std::unique_ptr<ComputeBuffer<ShaderParams> > _paramsCB;
-	std::unique_ptr<ComputeBuffer<Vector4> > _samplesCB;
-	std::unique_ptr<ComputeBuffer<RayData> > _rayDataCB;
-	std::unique_ptr<ComputeBuffer<float> > _resultsMiddleCB;
-	std::unique_ptr<ComputeBuffer<float> > _resultsFinalCB;
+	ProgramHandle _rayProgram;
+	ProgramHandle _aoProgram;
+	ProgramHandle _avgProgram;
+	UniformHandle _uniforms;
+	VBHandle _paramsCB;
+	VBHandle _samplesCB;
+	VBHandle _rayDataCB;
+	VBHandle _resultsMiddleCB;
+	VBHandle _resultsFinalCB;
+	VBHandle _paramsCB;
+	VBHandle _samplesCB;
+	VBHandle _rayDataCB;
+	VBHandle _resultsMiddleCB;
+	//VBHandle _resultsFinalCB;
+	TextureHandle _resultsFinalCB;
 
 	std::shared_ptr<const CompressedMapUV> _uvMap;
 	std::shared_ptr<MeshMapping> _meshMapping;

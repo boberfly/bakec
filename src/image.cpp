@@ -27,11 +27,14 @@ SOFTWARE.
 #include "timing.h"
 #include <cassert>
 
-#pragma warning(disable:4996)
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-#include "stb_image_write.h"
+//#pragma warning(disable:4996)
+//#define STB_IMAGE_WRITE_IMPLEMENTATION
+//#include "stb_image_write.h"
 
-#include "tinyexr.h"
+//#include "tinyexr.h"
+
+#include <bx/bx.h>
+#include <bimg/bimg.h>
 
 Vector2 getMinMax(const float *data, const size_t count)
 {
@@ -202,80 +205,92 @@ void exportFloatImage(const float *data, const CompressedMapUV *map, const char 
 	if (o_minmax) *o_minmax = minmax;
 	const Vector2 scaleBias = computeScaleBias(minmax, normalize);
 
-	if (ext == Extension::Png || ext == Extension::Tga)
+	bx::Error err;
+	bx::FileWriter writer;
+
+	if (bx::open(&writer, path, false, &err) )
 	{
-		// TODO: Unnormalized quantized data is not a great option...
-		//if (!normalize) return Vector2();
-
-		uint8_t *rgb = new uint8_t[w * h * 3];
-		memset(rgb, 0, sizeof(uint8_t) * w * h * 3);
-		for (size_t i = 0; i < count; ++i)
+		if (ext == Extension::Png || ext == Extension::Tga)
 		{
-			const float d = data[i];
-			const float t = d * scaleBias.x + scaleBias.y;
-			const uint8_t c = (uint8_t)(std::min(std::max(t, 0.0f), 1.0f) * 255.0f);
-			const size_t index = map->indices[i];
-			const size_t x = index % w;
-			const size_t y = index / w;
-			const size_t pixidx = ((h - y - 1) * w + x) * 3;
-			rgb[pixidx + 0] = c;
-			rgb[pixidx + 1] = c;
-			rgb[pixidx + 2] = c;
-		}
+			// TODO: Unnormalized quantized data is not a great option...
+			//if (!normalize) return Vector2();
 
-		if (dilate > 0)
+			uint8_t *rgb = new uint8_t[w * h * 3];
+			memset(rgb, 0, sizeof(uint8_t) * w * h * 3);
+			for (size_t i = 0; i < count; ++i)
+			{
+				const float d = data[i];
+				const float t = d * scaleBias.x + scaleBias.y;
+				const uint8_t c = (uint8_t)(std::min(std::max(t, 0.0f), 1.0f) * 255.0f);
+				const size_t index = map->indices[i];
+				const size_t x = index % w;
+				const size_t y = index / w;
+				const size_t pixidx = ((h - y - 1) * w + x) * 3;
+				rgb[pixidx + 0] = c;
+				rgb[pixidx + 1] = c;
+				rgb[pixidx + 2] = c;
+			}
+
+			if (dilate > 0)
+			{
+				const auto validPixels = createValidPixelsTable(map);
+				dilateRGB(rgb, map, validPixels, dilate);
+			}
+
+			if (ext == Extension::Tga)
+				int32_t ret = bimg::imageWriteTga(
+					&writer
+					, w
+					, h
+					, w*3
+					, &rgb
+					, false
+					, false
+					, &err
+					);
+
+			else if (ext == Extension::Png)
+				int32_t ret = bimg::imageWritePng(
+					&writer
+					, w
+					, h
+					, w*3
+					, &rgb
+					, bimg::TextureFormat::RGBA8
+					, false
+					, &err
+					);
+
+			delete[] rgb;
+		}
+		else if (ext == Extension::Exr)
 		{
-			const auto validPixels = createValidPixelsTable(map);
-			dilateRGB(rgb, map, validPixels, dilate);
+			float *f = new float[w * h];
+			memset(f, 0, sizeof(float) * w * h);
+			for (size_t i = 0; i < count; ++i)
+			{
+				const float d = data[i];
+				const float t = d * scaleBias.x + scaleBias.y;
+				const size_t index = map->indices[i];
+				const size_t x = index % w;
+				const size_t y = index / w;
+				const size_t pixidx = ((h - y - 1) * w + x);
+				f[pixidx] = t;
+			}
+
+			int32_t ret = bimg::imageWriteExr(
+				&writer
+				, w
+				, h
+				, w*8
+				, &f
+				, bimg::TextureFormat::RGBA16F
+				, false
+				, &err
+				);
+
+			delete[] f;
 		}
-
-		if (ext == Extension::Png) stbi_write_png(path, (int)w, (int)h, 3, rgb, (int)w * 3);
-		else stbi_write_tga(path, (int)w, (int)h, 3, rgb);
-
-		delete[] rgb;
-	}
-	else if (ext == Extension::Exr)
-	{
-		EXRHeader header;
-		InitEXRHeader(&header);
-		EXRImage image;
-		InitEXRImage(&image);
-		image.num_channels = 1;
-
-		float *f = new float[w * h];
-		memset(f, 0, sizeof(float) * w * h);
-		for (size_t i = 0; i < count; ++i)
-		{
-			const float d = data[i];
-			const float t = d * scaleBias.x + scaleBias.y;
-			const size_t index = map->indices[i];
-			const size_t x = index % w;
-			const size_t y = index / w;
-			const size_t pixidx = ((h - y - 1) * w + x);
-			f[pixidx] = t;
-		}
-
-		image.images = (unsigned char **)(&f);
-		image.width = (int)w;
-		image.height = (int)h;
-		header.num_channels = 1;
-		header.channels = new EXRChannelInfo[header.num_channels];
-		strncpy(header.channels[0].name, "B", 255); header.channels[0].name[strlen("B")] = '\0';
-		header.pixel_types = new int[header.num_channels];
-		header.requested_pixel_types = new int[header.num_channels];
-		header.pixel_types[0] = TINYEXR_PIXELTYPE_FLOAT;
-		header.requested_pixel_types[0] = TINYEXR_PIXELTYPE_HALF;
-		const char *err;
-		int ret = SaveEXRImageToFile(&image, &header, path, &err);
-		if (ret != TINYEXR_SUCCESS)
-		{
-			// TODO: Error handling
-		}
-
-		delete[] f;
-		delete[] header.channels;
-		delete[] header.pixel_types;
-		delete[] header.requested_pixel_types;
 	}
 }
 

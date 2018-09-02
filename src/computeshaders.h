@@ -23,25 +23,25 @@ SOFTWARE.
 
 #pragma once
 
-#include <glad/glad.h>
+#include <bgfx/bgfx.h>
 
-GLuint LoadComputeShader_MeshMapping();
-GLuint LoadComputeShader_MeshMappingCullBackfaces();
+bgfx::ProgramHandle LoadComputeShader_MeshMapping();
+bgfx::ProgramHandle LoadComputeShader_MeshMappingCullBackfaces();
 
-GLuint LoadComputeShader_AO_GenData();
-GLuint LoadComputeShader_AO_Sampling();
-GLuint LoadComputeShader_AO_Aggregate();
+bgfx::ProgramHandle LoadComputeShader_AO_GenData();
+bgfx::ProgramHandle LoadComputeShader_AO_Sampling();
+bgfx::ProgramHandle LoadComputeShader_AO_Aggregate();
 
-GLuint LoadComputeShader_BN_GenData();
-GLuint LoadComputeShader_BN_Sampling();
-GLuint LoadComputeShader_BN_Aggregate();
+bgfx::ProgramHandle LoadComputeShader_BN_GenData();
+bgfx::ProgramHandle LoadComputeShader_BN_Sampling();
+bgfx::ProgramHandle LoadComputeShader_BN_Aggregate();
 
-GLuint LoadComputeShader_Thick_GenData();
-GLuint LoadComputeShader_Thick_Sampling();
-GLuint LoadComputeShader_Thick_Aggregate();
+bgfx::ProgramHandle LoadComputeShader_Thick_GenData();
+bgfx::ProgramHandle LoadComputeShader_Thick_Sampling();
+bgfx::ProgramHandle LoadComputeShader_Thick_Aggregate();
 
-GLuint LoadComputeShader_Height();
-GLuint LoadComputeShader_Position();
-GLuint LoadComputeShader_Normal();
+bgfx::ProgramHandle LoadComputeShader_Height();
+bgfx::ProgramHandle LoadComputeShader_Position();
+bgfx::ProgramHandle LoadComputeShader_Normal();
 
-GLuint LoadComputeShader_ToTangentSpace();
+bgfx::ProgramHandle LoadComputeShader_ToTangentSpace();

@@ -32,7 +32,7 @@ SOFTWARE.
 #include "image.h"
 #endif
 
-GLuint CreateComputeProgram(const char *path)
+bgfx::ProgramHandle CreateComputeProgram(const char *path)
 {
 	std::ifstream ifs(path);
 	std::string src((std::istreambuf_iterator<char>(ifs)), (std::istreambuf_iterator<char>()));
@@ -40,7 +40,7 @@ GLuint CreateComputeProgram(const char *path)
 	return CreateComputeProgramFromMemory(src_str);
 }
 
-inline GLuint CreateComputeProgramFromMemory(const char *src)
+inline bgfx::ProgramHandle CreateComputeProgramFromMemory(const char *src)
 {
 	GLuint shader = glCreateShader(GL_COMPUTE_SHADER);
 
