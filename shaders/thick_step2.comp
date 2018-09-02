@@ -1,8 +1,7 @@
-#version 430 core
-#extension GL_ARB_compute_shader : enable
-#extension GL_ARB_shader_storage_buffer_object : enable
+#include "bgfx_compute.sh"
+#include "common.sh"
 
-layout (local_size_x = 64) in;
+NUM_THREADS(64, 1, 1)
 
 struct Params
 {
@@ -11,10 +10,10 @@ struct Params
 	float maxDistance;
 };
 
-layout(location = 1) uniform uint workOffset;
-layout(std430, binding = 2) readonly buffer paramsBuffer { Params params; };
-layout(std430, binding = 3) readonly buffer dataBuffer { float data[]; };
-layout(std430, binding = 4) writeonly buffer resultAccBuffer { float results[]; };
+BUFFER_RO(params, Params, 2)
+BUFFER_RO(data, float, 3)
+//BUFFER_WR(results, float, 4)
+IMAGE2D_WR(results, float, 4)
 
 void main()
 { 

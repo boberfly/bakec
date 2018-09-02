@@ -1,67 +1,15 @@
-#version 430 core
-#extension GL_ARB_compute_shader : enable
-#extension GL_ARB_shader_storage_buffer_object : enable
-#extension GL_ARB_gpu_shader_fp64 : enable
+#include "bgfx_compute.sh"
+#include "common.sh"
 
-layout (local_size_x = 64) in;
+NUM_THREADS(64, 1, 1)
 
-#define FLT_MAX 3.402823466e+38
-#define BARY_MIN -1e-5
-#define BARY_MAX 1.0
+BUFFER_RO(pixels, Pix, 4)
+BUFFER_RO(positions, vec3, 5)
+BUFFER_RO(bvhs, BVH, 6)
+BUFFER_WR(r_coords, vec4, 7)
+BUFFER_WR(r_tidx, uint, 8)
 
-struct Pix
-{
-	vec3 p;
-	vec3 d;
-};
-
-struct BVH
-{
-	float aabbMinX; float aabbMinY; float aabbMinZ;
-	float aabbMaxX; float aabbMaxY; float aabbMaxZ;
-	uint start;
-	uint end;
-	uint jump; // Index to the next BVH if we skip this subtree
-};
-
-layout(location = 1) uniform uint workOffset;
-layout(location = 2) uniform uint workCount;
-layout(location = 3) uniform uint bvhCount;
-layout(std430, binding = 4) readonly buffer pixBuffer { Pix pixels[]; };
-layout(std430, binding = 5) readonly buffer meshPBuffer { vec3 positions[]; };
-layout(std430, binding = 6) readonly buffer bvhBuffer { BVH bvhs[]; };
-layout(std430, binding = 7) writeonly buffer rCoordBuffer { vec4 r_coords[]; };
-layout(std430, binding = 8) writeonly buffer rTidxBuffer { uint r_tidx[]; };
-
-float RayAABB(vec3 o, vec3 d, vec3 mins, vec3 maxs)
-{
-	vec3 dabs = abs(d);
-	vec3 t1 = (mins - o) / d;
-	vec3 t2 = (maxs - o) / d;
-	vec3 tmin = min(t1, t2);
-	vec3 tmax = max(t1, t2);
-	float a = max(tmin.x, max(tmin.y, tmin.z));
-	float b = min(tmax.x, min(tmax.y, tmax.z));
-	return (b >= 0 && a <= b) ? a : FLT_MAX;
-}
-
-vec3 barycentric(dvec3 p, dvec3 a, dvec3 b, dvec3 c)
-{
-	dvec3 v0 = b - a;
-	dvec3 v1 = c - a;
-	dvec3 v2 = p - a;
-	double d00 = dot(v0, v0);
-	double d01 = dot(v0, v1);
-	double d11 = dot(v1, v1);
-	double d20 = dot(v2, v0);
-	double d21 = dot(v2, v1);
-	double denom = d00 * d11 - d01 * d01;
-	double y = (d11 * d20 - d01 * d21) / denom;
-	double z = (d00 * d21 - d01 * d20) / denom;
-	return vec3(dvec3(1.0 - y - z, y, z));
-}
-
-vec4 raycast(vec3 o, vec3 d, vec3 a, vec3 b, vec3 c, float mindist, float maxdist)
+vec4 raycast_nobackfaces(vec3 o, vec3 d, vec3 a, vec3 b, vec3 c, float mindist, float maxdist)
 {
 	vec3 n = normalize(cross(b - a, c - a));
 	float nd = dot(d, n);
@@ -82,14 +30,14 @@ vec4 raycast(vec3 o, vec3 d, vec3 a, vec3 b, vec3 c, float mindist, float maxdis
 	return vec4(FLT_MAX, 0, 0, 0);
 }
 
-void raycastRange(vec3 o, vec3 d, uint start, uint end, float mindist, in out float curdist, in out uint o_idx, in out vec3 o_bcoord)
+void raycastRange_nobackfaces(vec3 o, vec3 d, uint start, uint end, float mindist, in out float curdist, in out uint o_idx, in out vec3 o_bcoord)
 {
 	for (uint tidx = start; tidx < end; tidx += 3)
 	{
 		vec3 v0 = positions[tidx + 0];
 		vec3 v1 = positions[tidx + 1];
 		vec3 v2 = positions[tidx + 2];
-		vec4 r = raycast(o, d, v0, v1, v2, mindist, curdist);
+		vec4 r = raycast_nobackfaces(o, d, v0, v1, v2, mindist, curdist);
 		if (r.x != FLT_MAX)
 		{
 			curdist = r.x;
@@ -99,7 +47,7 @@ void raycastRange(vec3 o, vec3 d, uint start, uint end, float mindist, in out fl
 	}
 }
 
-void raycastBVH(vec3 o, vec3 d, in out float curdist, in out uint o_idx, in out vec3 o_bcoord)
+void raycastBVH_nobackfaces(vec3 o, vec3 d, in out float curdist, in out uint o_idx, in out vec3 o_bcoord)
 {
 	uint i = 0;
 	while (i < bvhCount)
@@ -110,7 +58,7 @@ void raycastBVH(vec3 o, vec3 d, in out float curdist, in out uint o_idx, in out 
 		float distAABB = RayAABB(o, d, aabbMin, aabbMax);
 		if (distAABB < curdist)
 		{
-			raycastRange(o, d, bvh.start, bvh.end, 0, curdist, o_idx, o_bcoord);
+			raycastRange_nobackfaces(o, d, bvh.start, bvh.end, 0, curdist, o_idx, o_bcoord);
 			++i;
 		}
 		else
@@ -191,7 +139,7 @@ void main()
 	uint tidx = 4294967295;
 	vec3 bcoord = vec3(0, 0, 0);
 	float t = FLT_MAX;
-	raycastBVH(p, d, t, tidx, bcoord);
+	raycastBVH_nobackfaces(p, d, t, tidx, bcoord);
 	raycastBackBVH(p, -d, t, tidx, bcoord);
 
 	r_coords[gid] = vec4(t, bcoord.x, bcoord.y, bcoord.z);
